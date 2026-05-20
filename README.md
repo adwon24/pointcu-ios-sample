@@ -44,7 +44,7 @@ Product: PointCUSDK → 타겟에 추가
 
 ```ruby
 # Podfile
-target 'PointCUDemoSB' do
+target 'PointCUDemo' do
   pod 'NAMSDK'
 end
 ```
@@ -68,7 +68,7 @@ GFPNativeSimpleAdView.xib
 ```
 Build Settings → Swift Compiler - General
 → Objective-C Bridging Header
-→ PointCUDemoSB/PointCUDemoSB-Bridging-Header.h
+→ PointCUDemo/PointCUDemo-Bridging-Header.h
 ```
 
 ### 6. Build Settings 설정
