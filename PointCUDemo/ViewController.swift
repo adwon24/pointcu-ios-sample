@@ -293,6 +293,7 @@ class ViewController: UIViewController {
             showToast("회원가입 되지 않은 사용자 입니다.")
             return
         }
+        
         PointCUSDK.startGameRoulette()
     }
 
@@ -301,6 +302,7 @@ class ViewController: UIViewController {
             showToast("회원가입 되지 않은 사용자 입니다.")
             return
         }
+        
         PointCUSDK.startGameLottery()
     }
 
@@ -309,10 +311,8 @@ class ViewController: UIViewController {
             showToast("회원가입 되지 않은 사용자 입니다.")
             return
         }
-        PointCUSDK.startPoint4uAdvertise(type: .eat,
-            onComplete: { [weak self] in self?.showToast("광고 완료") },
-            onFail:     { [weak self] in self?.showToast("광고 실패") }
-        )
+        
+        PointCUSDK.startPoint4uAdvertise(type: .eat, delegate: self)
     }
 
     @objc private func onAdInventory() {
@@ -320,10 +320,8 @@ class ViewController: UIViewController {
             showToast("회원가입 되지 않은 사용자 입니다.")
             return
         }
-        PointCUSDK.startPoint4uAdvertise(type: .inventory,
-            onComplete: { [weak self] in self?.showToast("광고 완료") },
-            onFail:     { [weak self] in self?.showToast("광고 실패") }
-        )
+        
+        PointCUSDK.startPoint4uAdvertise(type: .inventory, delegate: self)
     }
 
     @objc private func onAdNewProduct() {
@@ -331,10 +329,8 @@ class ViewController: UIViewController {
             showToast("회원가입 되지 않은 사용자 입니다.")
             return
         }
-        PointCUSDK.startPoint4uAdvertise(type: .newProduct,
-            onComplete: { [weak self] in self?.showToast("광고 완료") },
-            onFail:     { [weak self] in self?.showToast("광고 실패") }
-        )
+        
+        PointCUSDK.startPoint4uAdvertise(type: .newProduct, delegate: self)
     }
 
     @objc private func onAdPreOrder() {
@@ -342,10 +338,8 @@ class ViewController: UIViewController {
             showToast("회원가입 되지 않은 사용자 입니다.")
             return
         }
-        PointCUSDK.startPoint4uAdvertise(type: .preOrder,
-            onComplete: { [weak self] in self?.showToast("광고 완료") },
-            onFail:     { [weak self] in self?.showToast("광고 실패") }
-        )
+        
+        PointCUSDK.startPoint4uAdvertise(type: .preOrder, delegate: self)
     }
 
     @objc private func onClearUserData() {
@@ -398,24 +392,39 @@ class ViewController: UIViewController {
 
 extension ViewController: PointCUGameDelegate {
     func onGameLoadFail(error: PointCUError) {
-        showToast("게임 오류 [\(error.code.rawValue)] \(error.message)")
+        print("게임 오류 [\(error.code.rawValue)] \(error.message)")
     }
     func onGameComplete(winPoint: Int) {
-        showToast("게임 완료 — \(winPoint)P 획득")
+        print("게임 완료 — \(winPoint)P 획득")
     }
-    func onGameClose() { }
+    func onGameClose() {
+        print("게임 종료")
+    }
 }
 
 // MARK: - PointCUAdDelegate
 
 extension ViewController: PointCUAdDelegate {
-    func onAdShow(type: Point4uAd?)   { }
-    func onAdFail(type: Point4uAd?, error: PointCUError) {
-        showToast("광고 실패 [\(error.code.rawValue)] \(error.message)")
+    func onAdShow(type: Point4uAd?) {
+        // 광고 배너 로드 완료
+        print("onAdShow")
     }
-    func onAdClose(type: Point4uAd?)  { }
-    func onAdEarned(type: Point4uAd?) { showToast("광고 리워드 적립 완료") }
-    func onAdClick(type: Point4uAd?)  { }
+    func onAdFail(type: Point4uAd?, error: PointCUError) {
+        // 광고 로드 실패
+        print("onAdFail")
+    }
+    func onAdClose(type: Point4uAd?) {
+        // 팝업 닫힘
+        print("onAdClose")
+    }
+    func onAdEarned(type: Point4uAd?) {
+        // 광고 페이지에 5초 이상 머물렀을 경우
+        print("onAdEarned")
+    }
+    func onAdClick(type: Point4uAd?) {
+        // 광고 배너 클릭
+        print("onAdClick")
+    }
 }
 
 // MARK: - PointCUFinishDelegate
