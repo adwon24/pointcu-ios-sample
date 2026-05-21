@@ -102,19 +102,38 @@ present(vc, animated: true)
 // 등록 여부 확인 후 실행
 if PointCUSDK.isRegistered() {
     PointCUSDK.startGameRoulette(delegate: self)
-    PointCUSDK.startGameLottery(delegate: self)
 }
 ```
 
 ### CU 자체 광고
 
 ```swift
+// delegate 방식 (권장)
 PointCUSDK.startPoint4uAdvertise(
-    type:       .eat,
-    delegate:   self,
-    onComplete: { print("완료") },
-    onFail:     { print("실패") }
+    type:     .eat,
+    delegate: self   // PointCUAdDelegate
 )
+```
+
+```swift
+// PointCUAdDelegate 구현
+extension ViewController: PointCUAdDelegate {
+    func onAdShow(type: Point4uAd?) { 
+        // 광고 로드 완료
+    }
+    func onAdFail(type: Point4uAd?, error: PointCUError) {
+        // 모든 광고 로드 실패
+    }
+    func onAdClose(type: Point4uAd?) { 
+        // 광고 팝업 닫힘
+    }
+    func onAdEarned(type: Point4uAd?) {
+        // 5초 이상 체류 완료
+    }
+    func onAdClick(type: Point4uAd?) { 
+        // 광고 배너 클릭
+    }
+}
 ```
 
 ---
