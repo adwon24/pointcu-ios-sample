@@ -4,6 +4,7 @@ __MACOSX/
 xcuserdata/
 *.xcuserstate
 *.xcuserdatad/
+*.resolved
 Pods/
 *.xcworkspace/xcuserdata/
 build/
