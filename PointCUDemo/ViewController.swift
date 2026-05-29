@@ -19,12 +19,22 @@ class ViewController: UIViewController {
     private let stackView = UIStackView()
 
     private let titleLabel = UILabel()
+    private let versionLabel = UILabel()
     private let userIdLabel = UILabel()
     private let divider1 = UIView()
     private let divider2 = UIView()
     private let divider3 = UIView()
 
     // 버튼
+    // 서버 환경 선택 (TEST_MODE=true 일 때만 유효)
+    private lazy var serverSegment: UISegmentedControl = {
+        let seg = UISegmentedControl(items: ["STG", "AWS"])
+        seg.selectedSegmentIndex = 0
+        seg.addTarget(self, action: #selector(onServerChanged), for: .valueChanged)
+        seg.translatesAutoresizingMaskIntoConstraints = false
+        return seg
+    }()
+    
     private lazy var btnStartSDK       = makeButton(title: "SDK START",            color: .systemBlue)
     private lazy var btnRoulette       = makeButton(title: "ROULETTE GAME",        color: .systemPurple)
     private lazy var btnLottery        = makeButton(title: "LOTTERY GAME",         color: .systemPurple)
@@ -33,6 +43,7 @@ class ViewController: UIViewController {
     private lazy var btnAdNewProduct   = makeButton(title: "CU광고 - 신상품",        color: .systemOrange)
     private lazy var btnAdPreOrder     = makeButton(title: "CU광고 - 예약구매",       color: .systemOrange)
     private lazy var btnClearUserData  = makeButton(title: "사용자 데이터 삭제",       color: .systemRed)
+    private lazy var btnGetSteps       = makeButton(title: "오늘 걸음수 조회",         color: .systemTeal)
 
     // 선택 가능한 userId 목록
     private let userIds = [
@@ -42,6 +53,12 @@ class ViewController: UIViewController {
         "age_74_f", "age_75_m"
     ]
     private let userIdDefaultsKey = "PointCUDemo_SelectedUserId"
+    private let serverTypeDefaultsKey = "PointCUDemo_DevServerType"
+    
+    private var savedServerIsAws: Bool {
+        get { UserDefaults.standard.string(forKey: serverTypeDefaultsKey) == "aws" }
+        set { UserDefaults.standard.set(newValue ? "aws" : "stg", forKey: serverTypeDefaultsKey) }
+    }
 
     private var selectedUserId: String {
         get { UserDefaults.standard.string(forKey: userIdDefaultsKey) ?? "age_14_f" }
@@ -70,6 +87,8 @@ class ViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
+        PointCUSDK.setDevServer(useAws: savedServerIsAws)
+        serverSegment.selectedSegmentIndex = savedServerIsAws ? 1 : 0
     }
 
     // MARK: - ATT 권한 요청
@@ -124,6 +143,14 @@ class ViewController: UIViewController {
         titleLabel.text          = "PointCU SDK"
         titleLabel.font          = .systemFont(ofSize: 28, weight: .bold)
         titleLabel.textAlignment = .center
+        
+        // version 레이블
+        let dictionary = Bundle.main.infoDictionary!;
+        let version = dictionary["CFBundleShortVersionString"] as! String;
+        let build = dictionary["CFBundleVersion"] as! String;
+        versionLabel.text           = "Verion \(version) B(\(build))"
+        versionLabel.font           = .systemFont(ofSize: 12, weight: .medium)
+        versionLabel.textAlignment  = .center
 
         // userId 레이블 — UserDefaults에서 복원한 값으로 초기 표시 (age/gender 파싱)
         userIdLabel.font      = .systemFont(ofSize: 14, weight: .medium)
@@ -139,6 +166,7 @@ class ViewController: UIViewController {
         btnAdNewProduct.addTarget(self,  action: #selector(onAdNewProduct),  for: .touchUpInside)
         btnAdPreOrder.addTarget(self,    action: #selector(onAdPreOrder),    for: .touchUpInside)
         btnClearUserData.addTarget(self, action: #selector(onClearUserData), for: .touchUpInside)
+        btnGetSteps.addTarget(self,      action: #selector(onGetStepCount),  for: .touchUpInside)
 
         // 구분선
         [divider1, divider2, divider3].forEach {
@@ -148,13 +176,22 @@ class ViewController: UIViewController {
 
         // StackView 구성
         stackView.addArrangedSubview(titleLabel)
+        stackView.addArrangedSubview(versionLabel)
+        
+        stackView.addArrangedSubview(makeSectionLabel("서버 환경 (TEST_MODE)"))
+        stackView.addArrangedSubview(serverSegment)
+        serverSegment.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        stackView.setCustomSpacing(20, after: serverSegment)
         
         stackView.addArrangedSubview(makeSectionLabel("SDK 메인"))
         stackView.addArrangedSubview(btnStartSDK)
         stackView.setCustomSpacing(20, after: btnStartSDK)
 
         stackView.addArrangedSubview(userIdRowView)
-        stackView.setCustomSpacing(24, after: userIdRowView)
+        stackView.setCustomSpacing(20, after: userIdRowView)
+        
+        stackView.addArrangedSubview(btnGetSteps)
+        stackView.setCustomSpacing(24, after: btnGetSteps)
         
         stackView.addArrangedSubview(divider1)
         stackView.setCustomSpacing(20, after: divider1)
@@ -286,6 +323,32 @@ class ViewController: UIViewController {
         )
         vc.modalPresentationStyle = .fullScreen
         present(vc, animated: true)
+    }
+    
+    // 2026.05.29 ADDED 걸음 수 연동 함수 추가
+    @objc private func onGetStepCount() {
+        guard PointCUSDK.isRegistered() else {
+            showToast("회원가입 되지 않은 사용자 입니다.")
+            return
+        }
+        
+        PointCUSDK.getStepCount { steps in
+            if steps == -1 {
+                self.showToast("모션 권한 없음")
+            } else {
+                self.showToast("오늘 걸음수: \(steps)보")
+            }
+        }
+    }
+    
+    @objc private func onServerChanged(_ sender: UISegmentedControl) {
+        let isAws = sender.selectedSegmentIndex == 1
+        savedServerIsAws = isAws
+        PointCUSDK.setDevServer(useAws: isAws)
+        // 서버 전환 시 토큰 초기화 — 다음 SDK 진입 시 새 서버로 재인증
+        PointCUSDK.clearUserData()
+        let name = isAws ? "AWS" : "STG"
+        showToast("서버 환경: \(name) (재인증 필요)")
     }
 
     @objc private func onRoulette() {

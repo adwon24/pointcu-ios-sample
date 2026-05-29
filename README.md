@@ -96,6 +96,20 @@ vc.modalPresentationStyle = .fullScreen
 present(vc, animated: true)
 ```
 
+### 걸음 수 확인
+```swift
+// 등록 여부 확인 후 실행
+if PointCUSDK.isRegistered() {
+    PointCUSDK.getStepCount { steps in
+        if steps == -1 {
+            self.showToast("모션 권한 없음")
+        } else {
+            self.showToast("오늘 걸음수: \(steps)보")
+        }
+    }
+}
+```
+
 ### 게임 단독 실행
 
 ```swift
