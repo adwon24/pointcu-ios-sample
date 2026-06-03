@@ -403,6 +403,7 @@ class ViewController: UIViewController {
                 sheet.detents = [.medium()]
                 sheet.prefersGrabberVisible = true
         }
+        adVC.view.backgroundColor = UIColor.black.withAlphaComponent(0.8)
         present(adVC, animated: true)
     }
 
