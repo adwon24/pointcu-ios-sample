@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import CoreMotion
 import AppTrackingTransparency
 import PointCU
 
@@ -25,11 +26,10 @@ class ViewController: UIViewController {
     private let divider2 = UIView()
     private let divider3 = UIView()
 
-    // 버튼
-    // 서버 환경 선택 (TEST_MODE=true 일 때만 유효)
+    // 서버 환경 선택 (STG / AWS / 상용)
     private lazy var serverSegment: UISegmentedControl = {
-        let seg = UISegmentedControl(items: ["STG", "AWS"])
-        seg.selectedSegmentIndex = 0
+        let seg = UISegmentedControl(items: ["STG", "AWS", "상용"])
+        seg.selectedSegmentIndex = 1  // 기본값: AWS
         seg.addTarget(self, action: #selector(onServerChanged), for: .valueChanged)
         seg.translatesAutoresizingMaskIntoConstraints = false
         return seg
@@ -55,9 +55,13 @@ class ViewController: UIViewController {
     private let userIdDefaultsKey = "PointCUDemo_SelectedUserId"
     private let serverTypeDefaultsKey = "PointCUDemo_DevServerType"
     
-    private var savedServerIsAws: Bool {
-        get { UserDefaults.standard.string(forKey: serverTypeDefaultsKey) == "aws" }
-        set { UserDefaults.standard.set(newValue ? "aws" : "stg", forKey: serverTypeDefaultsKey) }
+    // 0: STG, 1: AWS, 2: 상용
+    private var savedServerIndex: Int {
+        get {
+            let saved = UserDefaults.standard.object(forKey: serverTypeDefaultsKey)
+            return saved == nil ? 1 : UserDefaults.standard.integer(forKey: serverTypeDefaultsKey)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: serverTypeDefaultsKey) }
     }
 
     private var selectedUserId: String {
@@ -87,18 +91,9 @@ class ViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
-        PointCUSDK.setDevServer(useAws: savedServerIsAws)
-        serverSegment.selectedSegmentIndex = savedServerIsAws ? 1 : 0
-    }
-
-    // MARK: - ATT 권한 요청
-
-    private func requestTrackingAuthorization() {
-        ATTrackingManager.requestTrackingAuthorization { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.updateUserIdLabel()
-            }
-        }
+        let index = savedServerIndex
+        serverSegment.selectedSegmentIndex = index
+        applyServerType(index: index)
     }
 
     // MARK: - UI 구성
@@ -145,14 +140,14 @@ class ViewController: UIViewController {
         titleLabel.textAlignment = .center
         
         // version 레이블
-        let dictionary = Bundle.main.infoDictionary!;
-        let version = dictionary["CFBundleShortVersionString"] as! String;
-        let build = dictionary["CFBundleVersion"] as! String;
+        let dictionary = Bundle.main.infoDictionary!
+        let version = dictionary["CFBundleShortVersionString"] as! String
+        let build = dictionary["CFBundleVersion"] as! String
         versionLabel.text           = "Verion \(version) B(\(build))"
         versionLabel.font           = .systemFont(ofSize: 12, weight: .medium)
         versionLabel.textAlignment  = .center
 
-        // userId 레이블 — UserDefaults에서 복원한 값으로 초기 표시 (age/gender 파싱)
+        // userId 레이블
         userIdLabel.font      = .systemFont(ofSize: 14, weight: .medium)
         userIdLabel.textColor = .label
         updateUserIdLabel()
@@ -178,7 +173,7 @@ class ViewController: UIViewController {
         stackView.addArrangedSubview(titleLabel)
         stackView.addArrangedSubview(versionLabel)
         
-        stackView.addArrangedSubview(makeSectionLabel("서버 환경 (TEST_MODE)"))
+        stackView.addArrangedSubview(makeSectionLabel("서버 환경"))
         stackView.addArrangedSubview(serverSegment)
         serverSegment.heightAnchor.constraint(equalToConstant: 36).isActive = true
         stackView.setCustomSpacing(20, after: serverSegment)
@@ -219,6 +214,17 @@ class ViewController: UIViewController {
         let age    = selectedAge.map { "\($0)세" } ?? "-"
         let gender = selectedGender == .male ? "남" : (selectedGender == .female ? "여" : "-")
         userIdLabel.text = "\(selectedUserId) (\(age) / \(gender))"
+    }
+
+    // MARK: - 서버 환경 적용
+
+    private func applyServerType(index: Int) {
+        switch index {
+        case 0: PointCUSDK.setServerType(.stg)
+        case 1: PointCUSDK.setServerType(.aws)
+        case 2: PointCUSDK.setServerType(.prod)
+        default: break
+        }
     }
 
     // MARK: - 팩토리
@@ -297,9 +303,9 @@ class ViewController: UIViewController {
         let btn = UIButton(type: .system)
         btn.setTitle(title, for: .normal)
         btn.setTitleColor(.white, for: .normal)
-        btn.titleLabel?.font    = .systemFont(ofSize: 16, weight: .semibold)
-        btn.backgroundColor     = color
-        btn.layer.cornerRadius  = 12
+        btn.titleLabel?.font   = .systemFont(ofSize: 16, weight: .semibold)
+        btn.backgroundColor    = color
+        btn.layer.cornerRadius = 12
         btn.heightAnchor.constraint(equalToConstant: 52).isActive = true
         return btn
     }
@@ -317,8 +323,8 @@ class ViewController: UIViewController {
     @objc private func onStartSDK() {
         let vc = PointCUSDK.makeMainViewController(
             userId:         selectedUserId,
-            age:            selectedAge,     // userId에서 자동 파싱 (age_{age}_{gender})
-            gender:         selectedGender,  // userId에서 자동 파싱 (f=female, m=male)
+            age:            selectedAge,
+            gender:         selectedGender,
             finishDelegate: self
         )
         vc.modalPresentationStyle = .fullScreen
@@ -342,13 +348,13 @@ class ViewController: UIViewController {
     }
     
     @objc private func onServerChanged(_ sender: UISegmentedControl) {
-        let isAws = sender.selectedSegmentIndex == 1
-        savedServerIsAws = isAws
-        PointCUSDK.setDevServer(useAws: isAws)
-        // 서버 전환 시 토큰 초기화 — 다음 SDK 진입 시 새 서버로 재인증
+        let index = sender.selectedSegmentIndex
+        savedServerIndex = index
+        applyServerType(index: index)
+        // 서버 전환 시 토큰 초기화
         PointCUSDK.clearUserData()
-        let name = isAws ? "AWS" : "STG"
-        showToast("서버 환경: \(name) (재인증 필요)")
+        let names = ["STG", "AWS", "상용"]
+        showToast("서버 환경: \(names[index]) (재인증 필요)")
     }
 
     @objc private func onRoulette() {
@@ -370,39 +376,83 @@ class ViewController: UIViewController {
     }
 
     @objc private func onAdEat() {
-        guard PointCUSDK.isRegistered() else {
-            showToast("회원가입 되지 않은 사용자 입니다.")
-            return
-        }
-        
         PointCUSDK.startPoint4uAdvertise(type: .eat, delegate: self)
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // MARK: - CU 광고 뷰 (PointCUAdViewController 활용)
+    // makeAdViewController 를 사용하면 광고 뷰만 제공받고
+    // 테두리·닫기 버튼 등 컨테이너 UI는 메인앱에서 직접 구성합니다.
+    // - adSize 생략 시 기본값 300×250 사용
+    // - adSize 파라미터로 원하는 크기 지정 가능
+    // ──────────────────────────────────────────────────────────────
+
+    // 재고조회: addChild — 커스텀 팝업 컨테이너 안에 광고 뷰 삽입
     @objc private func onAdInventory() {
-        guard PointCUSDK.isRegistered() else {
-            showToast("회원가입 되지 않은 사용자 입니다.")
-            return
-        }
-        
-        PointCUSDK.startPoint4uAdvertise(type: .inventory, delegate: self)
+        let popup = AdCustomPopupViewController(type: .inventory)
+        popup.modalPresentationStyle = .overFullScreen
+        popup.modalTransitionStyle   = .crossDissolve
+        present(popup, animated: true)
     }
 
+    // 신상품: present (pageSheet) — 시트 형태로 간단하게 표시
     @objc private func onAdNewProduct() {
-        guard PointCUSDK.isRegistered() else {
-            showToast("회원가입 되지 않은 사용자 입니다.")
-            return
+        let adVC = PointCUSDK.makeAdViewController(type: .newProduct, delegate: self)
+            adVC.modalPresentationStyle = .pageSheet
+            if let sheet = adVC.sheetPresentationController {
+                sheet.detents = [.medium()]
+                sheet.prefersGrabberVisible = true
         }
-        
-        PointCUSDK.startPoint4uAdvertise(type: .newProduct, delegate: self)
+        present(adVC, animated: true)
     }
+
+    // 예약구매: UIView 직접 — 현재 화면 위에 인라인으로 광고 뷰 삽입
+    private var inlineAdVC: PointCUAdViewController?
 
     @objc private func onAdPreOrder() {
-        guard PointCUSDK.isRegistered() else {
-            showToast("회원가입 되지 않은 사용자 입니다.")
-            return
-        }
-        
-        PointCUSDK.startPoint4uAdvertise(type: .preOrder, delegate: self)
+        inlineAdVC?.willMove(toParent: nil)
+        inlineAdVC?.view.removeFromSuperview()
+        inlineAdVC?.removeFromParent()
+
+        let adVC = PointCUSDK.makeAdViewController(type: .preOrder, delegate: self)
+        inlineAdVC = adVC
+        addChild(adVC)
+
+        let adView = adVC.view!
+        adView.translatesAutoresizingMaskIntoConstraints = false
+        adView.layer.cornerRadius = 12
+        adView.clipsToBounds = true
+        view.addSubview(adView)
+        NSLayoutConstraint.activate([
+            adView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            adView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            adView.widthAnchor.constraint(equalToConstant: 300),
+            adView.heightAnchor.constraint(equalToConstant: 250),
+        ])
+        adVC.didMove(toParent: self)
+
+        // 닫기 버튼
+        let closeBtn = UIButton(type: .system)
+        closeBtn.setTitle("✕", for: .normal)
+        closeBtn.setTitleColor(.white, for: .normal)
+        closeBtn.backgroundColor = UIColor.black.withAlphaComponent(0.8)
+        closeBtn.layer.cornerRadius = 12
+        closeBtn.translatesAutoresizingMaskIntoConstraints = false
+        adView.addSubview(closeBtn)
+        NSLayoutConstraint.activate([
+            closeBtn.topAnchor.constraint(equalTo: adView.topAnchor, constant: 8),
+            closeBtn.trailingAnchor.constraint(equalTo: adView.trailingAnchor, constant: -8),
+            closeBtn.widthAnchor.constraint(equalToConstant: 24),
+            closeBtn.heightAnchor.constraint(equalToConstant: 24),
+        ])
+        closeBtn.addTarget(self, action: #selector(dismissInlineAd), for: .touchUpInside)
+    }
+
+    @objc private func dismissInlineAd() {
+        inlineAdVC?.willMove(toParent: nil)
+        inlineAdVC?.view.removeFromSuperview()
+        inlineAdVC?.removeFromParent()
+        inlineAdVC = nil
     }
 
     @objc private func onClearUserData() {
@@ -423,13 +473,13 @@ class ViewController: UIViewController {
 
     private func showToast(_ message: String) {
         let toast = UILabel()
-        toast.text                = message
-        toast.font                = .systemFont(ofSize: 14)
-        toast.textColor           = .white
-        toast.textAlignment       = .center
-        toast.backgroundColor     = UIColor.black.withAlphaComponent(0.75)
-        toast.layer.cornerRadius  = 20
-        toast.clipsToBounds       = true
+        toast.text               = message
+        toast.font               = .systemFont(ofSize: 14)
+        toast.textColor          = .white
+        toast.textAlignment      = .center
+        toast.backgroundColor    = UIColor.black.withAlphaComponent(0.75)
+        toast.layer.cornerRadius = 20
+        toast.clipsToBounds      = true
         toast.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(toast)
 
@@ -490,6 +540,28 @@ extension ViewController: PointCUAdDelegate {
     }
 }
 
+// MARK: - PointCUAdViewDelegate (makeAdViewController 콜백)
+// 신상품(present), 예약구매(UIView 직접) 방식에서 사용
+
+extension ViewController: PointCUAdViewDelegate {
+    func onAdLoaded() {
+        print("[AdView] 광고 로드 성공")
+    }
+    func onAdFailed(error: PointCUError) {
+        print("[AdView] 광고 실패: \(error.message)")
+        dismissInlineAd()
+    }
+    func onAdClicked() {
+        print("[AdView] 광고 클릭")
+    }
+    func onAdEarned() {
+        print("[AdView] 이동 후 복귀 (5초 이상 체류)")
+    }
+    func onAdReturned() {
+        print("[AdView] 이동 후 복귀 (5초 미만 체류)")
+    }
+}
+
 // MARK: - PointCUFinishDelegate
 
 extension ViewController: PointCUFinishDelegate {
@@ -498,4 +570,117 @@ extension ViewController: PointCUFinishDelegate {
         // 재고조회 ViewController로 이동
         showToast("재고 조회로 이동합니다.")
     }
+}
+
+// MARK: - 재고조회 광고 커스텀 팝업 (addChild 방식 예시)
+// SDK에서 제공하는 광고 뷰(PointCUAdViewController)를 addChild로 삽입하고
+// 타이틀 바·닫기 버튼 등 팝업 UI는 메인앱에서 직접 구성한 예시입니다.
+
+final class AdCustomPopupViewController: UIViewController {
+
+    private let adType: Point4uAd
+    private var adVC:   PointCUAdViewController?
+    private var adContainerPlaceholder: UIView?
+
+    init(type: Point4uAd) {
+        self.adType = type
+        super.init(nibName: nil, bundle: nil)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        setupPopupLayout()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard adVC == nil, let placeholder = adContainerPlaceholder else { return }
+        let adVC = PointCUSDK.makeAdViewController(type: adType, delegate: self)
+        self.adVC = adVC
+        addChild(adVC)
+        adVC.view.translatesAutoresizingMaskIntoConstraints = false
+        placeholder.addSubview(adVC.view)
+        NSLayoutConstraint.activate([
+            adVC.view.topAnchor.constraint(equalTo: placeholder.topAnchor),
+            adVC.view.bottomAnchor.constraint(equalTo: placeholder.bottomAnchor),
+            adVC.view.leadingAnchor.constraint(equalTo: placeholder.leadingAnchor),
+            adVC.view.trailingAnchor.constraint(equalTo: placeholder.trailingAnchor),
+        ])
+        adVC.didMove(toParent: self)
+    }
+
+    private func setupPopupLayout() {
+        // 팝업 컨테이너 — 메인앱에서 원하는 대로 디자인 가능
+        let popupView = UIView()
+        popupView.backgroundColor    = .white
+        popupView.layer.cornerRadius = 16
+        popupView.clipsToBounds      = true
+        popupView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(popupView)
+
+        // 상단 타이틀 바
+        let titleBar = UIView()
+        titleBar.backgroundColor = .systemBlue
+        titleBar.translatesAutoresizingMaskIntoConstraints = false
+        popupView.addSubview(titleBar)
+
+        let titleLabel = UILabel()
+        titleLabel.text      = "재고조회"
+        titleLabel.textColor = .white
+        titleLabel.font      = .boldSystemFont(ofSize: 16)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleBar.addSubview(titleLabel)
+
+        let closeBtn = UIButton(type: .system)
+        closeBtn.setTitle("✕", for: .normal)
+        closeBtn.setTitleColor(.white, for: .normal)
+        closeBtn.titleLabel?.font = .boldSystemFont(ofSize: 16)
+        closeBtn.translatesAutoresizingMaskIntoConstraints = false
+        closeBtn.addTarget(self, action: #selector(closePopup), for: .touchUpInside)
+        titleBar.addSubview(closeBtn)
+
+        // 광고 뷰 placeholder — 실제 adVC는 viewDidAppear에서 addChild
+        let placeholder = UIView()
+        placeholder.backgroundColor = .white
+        placeholder.translatesAutoresizingMaskIntoConstraints = false
+        popupView.addSubview(placeholder)
+        adContainerPlaceholder = placeholder
+
+        NSLayoutConstraint.activate([
+            popupView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            popupView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            popupView.widthAnchor.constraint(equalToConstant: 320),
+
+            titleBar.topAnchor.constraint(equalTo: popupView.topAnchor),
+            titleBar.leadingAnchor.constraint(equalTo: popupView.leadingAnchor),
+            titleBar.trailingAnchor.constraint(equalTo: popupView.trailingAnchor),
+            titleBar.heightAnchor.constraint(equalToConstant: 44),
+
+            titleLabel.centerYAnchor.constraint(equalTo: titleBar.centerYAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: titleBar.leadingAnchor, constant: 16),
+
+            closeBtn.centerYAnchor.constraint(equalTo: titleBar.centerYAnchor),
+            closeBtn.trailingAnchor.constraint(equalTo: titleBar.trailingAnchor, constant: -16),
+            closeBtn.widthAnchor.constraint(equalToConstant: 36),
+            closeBtn.heightAnchor.constraint(equalToConstant: 36),
+
+            placeholder.topAnchor.constraint(equalTo: titleBar.bottomAnchor),
+            placeholder.leadingAnchor.constraint(equalTo: popupView.leadingAnchor, constant: 10),
+            placeholder.trailingAnchor.constraint(equalTo: popupView.trailingAnchor, constant: -10),
+            placeholder.heightAnchor.constraint(equalToConstant: 250),
+            placeholder.bottomAnchor.constraint(equalTo: popupView.bottomAnchor, constant: -10),
+        ])
+    }
+
+    @objc private func closePopup() { dismiss(animated: true) }
+}
+
+extension AdCustomPopupViewController: PointCUAdViewDelegate {
+    func onAdLoaded()                    { print("[AdPopup] 광고 로드 성공") }
+    func onAdFailed(error: PointCUError) { dismiss(animated: true) }
+    func onAdClicked()                   { print("[AdPopup] 광고 클릭") }
+    func onAdEarned()                    { print("[AdPopup] 이동 후 복귀 (5초 이상 체류)") }
+    func onAdReturned()                  { print("[AdPopup] 이동 후 복귀 (5초 미만 체류)") }
 }
