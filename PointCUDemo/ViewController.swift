@@ -29,7 +29,7 @@ class ViewController: UIViewController {
     // 서버 환경 선택 (STG / AWS / 상용)
     private lazy var serverSegment: UISegmentedControl = {
         let seg = UISegmentedControl(items: ["STG", "AWS", "상용"])
-        seg.selectedSegmentIndex = 1  // 기본값: AWS
+        seg.selectedSegmentIndex = savedServerIndex  // UserDefaults 없으면 2(상용)
         seg.addTarget(self, action: #selector(onServerChanged), for: .valueChanged)
         seg.translatesAutoresizingMaskIntoConstraints = false
         return seg
@@ -59,7 +59,7 @@ class ViewController: UIViewController {
     private var savedServerIndex: Int {
         get {
             let saved = UserDefaults.standard.object(forKey: serverTypeDefaultsKey)
-            return saved == nil ? 1 : UserDefaults.standard.integer(forKey: serverTypeDefaultsKey)
+            return saved == nil ? 2 : UserDefaults.standard.integer(forKey: serverTypeDefaultsKey)  // 기본값 2(상용)
         }
         set { UserDefaults.standard.set(newValue, forKey: serverTypeDefaultsKey) }
     }
